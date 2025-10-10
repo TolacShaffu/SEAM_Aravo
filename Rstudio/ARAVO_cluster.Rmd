@@ -6,6 +6,23 @@ output: html_document
 ---
 
 ```{r}
+library(readxl)
+REL2001 <- read_excel("ARAVO_RESURVEY_GRID.xlsx", 
+    sheet = "REL2001")
+View(REL2001)
+library(readxl)
+REL2022 <- read_excel("ARAVO_RESURVEY_GRID.xlsx", 
+    sheet = "REL2022")
+View(REL2022)
+library(readxl)
+META <- read_excel("ARAVO_RESURVEY_GRID.xlsx", 
+    sheet = "META")
+View(META)
+```
+
+
+
+```{r}
 rel2001 = REL2001
 rel2022 = REL2022
 meta = META
