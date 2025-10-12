@@ -177,6 +177,7 @@ cluster_assign <- cutree(clust, k = best_k)
 # --- 6. Ajouter les clusters à la table ---
 all_data_common_clean <- all_data_common_clean[keep_rows, ]  # filtrer les lignes correspondant à comm_matrix_bin
 all_data_common_clean$Cluster <- cluster_assign
+all_data_common_clean
 ```
 
 ```{r}
@@ -186,6 +187,22 @@ final_table <- all_data_common_clean %>%
   left_join(meta %>% select(ID, X_L93, Y_L93), by = "ID") %>%
   select(ID, Year, X_L93, Y_L93, Cluster)
 ```
+
+
+
+
+```{r}
+# --- 7. Joindre les coordonnées Lambert 93 depuis meta ---
+# meta doit contenir : ID, X_L93, Y_L93
+final_salix_herb <- all_data_common_clean %>%
+  left_join(meta %>% select(ID, X_L93, Y_L93), by = "ID") %>%
+  select(ID, Year, X_L93, Y_L93, `Care myos`, `Sali herb`)
+final_salix_herb
+```
+
+
+
+
 
 ```{r}
 # Vérifier le résultat
@@ -314,6 +331,111 @@ ggplot(species_freq_top, aes(x = Espece, y = factor(Cluster), fill = Frequence))
     panel.grid = element_blank()
   )
 ```
+
+
+
+
+```{r}
+# Filtrer les deux jeux pour ne garder que les ID communes
+rel2001_common <- rel2001_clean %>% filter(ID %in% common_IDs)
+rel2022_common <- rel2022_clean %>% filter(ID %in% common_IDs)
+
+rel2001_common
+
+```
+
+
+```{r}
+rel2022_common
+```
+
+
+
+```{r}
+# -----------------------------------------------------------
+# ⚙️ Chargement des librairies nécessaires
+# -----------------------------------------------------------
+library(ade4)
+library(ggplot2)
+library(dplyr)
+
+# -----------------------------------------------------------
+# 🧭 Vérification de la correspondance des lignes
+# -----------------------------------------------------------
+# Les ID doivent être dans le même ordre
+all(rownames(rel2001_common) == rownames(rel2022_common))
+# Si FALSE → réaligner :
+# rel2022_common <- rel2022_common[match(rownames(rel2001_common), rownames(rel2022_common)), ]
+
+# -----------------------------------------------------------
+# 📊 1. ACP sur chaque tableau
+# -----------------------------------------------------------
+# Sélectionne uniquement les colonnes numériques correspondant aux espèces
+rel2001_common_num <- rel2001_common %>% 
+  dplyr::select(-ROW, -COL, -ID, -Year)
+
+rel2022_common_num <- rel2022_common %>% 
+  dplyr::select(-ROW, -COL, -ID, -Year)
+
+
+rel2001_common_num[is.na(rel2001_common_num)] <- 0
+rel2022_common_num[is.na(rel2022_common_num)] <- 0
+
+
+library(ade4)
+# ACP pour chaque année
+pca2001 <- dudi.pca(rel2001_common_num, scannf = FALSE, nf = 3)
+pca2022 <- dudi.pca(rel2022_common_num, scannf = FALSE, nf = 3)
+
+# Co-inertie
+coin <- coinertia(pca2001, pca2022, scannf = FALSE)
+
+# Résumé et graphique
+summary(coin)
+plot(coin)
+
+# -----------------------------------------------------------
+# 🔗 2. Analyse de co-inertie
+# -----------------------------------------------------------
+coin <- coinertia(pca2001, pca2022, scannf = FALSE)
+
+# Résumé des résultats
+summary(coin)
+
+```
+
+```{r}
+# -----------------------------------------------------------
+# 📈 3. Visualisations principales
+# -----------------------------------------------------------
+# Inertie commune
+
+???????
+# -----------------------------------------------------------
+# 🧠 4. Interprétation
+# -----------------------------------------------------------
+# Coefficient RV (corrélation globale entre structures)
+RV <- RV.rtest(pca2001$tab, pca2022$tab)
+RV
+plot(RV)
+
+# -----------------------------------------------------------
+# 💾 5. Sauvegarde des coordonnées si besoin
+# -----------------------------------------------------------
+coords <- as.data.frame(coin$ls)
+coords$ID <- rownames(rel2001_common)
+write.csv(coords, "co_inertia_coordinates.csv", row.names = FALSE)
+```
+
+
+
+# Ici la création de la feuille précence et absence pour salix et carex 
+
+
+
+
+
+
 
 
 
