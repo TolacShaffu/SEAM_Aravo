@@ -178,6 +178,14 @@ cluster_assign <- cutree(clust, k = best_k)
 all_data_common_clean <- all_data_common_clean[keep_rows, ]  # filtrer les lignes correspondant à comm_matrix_bin
 all_data_common_clean$Cluster <- cluster_assign
 all_data_common_clean
+
+``{r}
+library(writexl)
+
+# Exporter la table finale en Excel dans ton dossier ARAVO
+write_xlsx(all_data_common_clean, path = "all_data_common_clean.xlsx")
+
+
 ```
 
 ```{r}
@@ -198,6 +206,11 @@ final_salix_herb <- all_data_common_clean %>%
   left_join(meta %>% select(ID, X_L93, Y_L93), by = "ID") %>%
   select(ID, Year, X_L93, Y_L93, `Care myos`, `Sali herb`)
 final_salix_herb
+
+library(writexl)
+
+# Exporter la table finale en Excel dans ton dossier ARAVO
+write_xlsx(final_salix_herb, path = "final_salix_herb.xlsx")
 ```
 
 
@@ -432,12 +445,258 @@ write.csv(coords, "co_inertia_coordinates.csv", row.names = FALSE)
 # Ici la création de la feuille précence et absence pour salix et carex 
 
 
+```{r}
+# Packages
+library(tidyverse)
+
+# On part de ton data.frame déjà chargé
+df <- final_salix_herb
+
+# Renommer pour simplifier
+df <- df %>%
+  rename(
+    Carex = `Care myos`,
+    Salix = `Sali herb`
+  )
+
+# Vérification
+glimpse(df)
+```
+
+```{r}
+# Table croisée de co-occurrence
+tab <- table(df$Carex, df$Salix)
+tab
+```
+
+
+```{r}
+chisq.test(tab)
+```
+```{r}
+fisher.test(tab)
+```
+
+```{r}
+# Graphique de cooccurrence
+df %>%
+  count(Carex, Salix) %>%
+  ggplot(aes(x = factor(Salix), y = factor(Carex), size = n, color = n)) +
+  geom_point() +
+  scale_size(range = c(3,10)) +
+  theme_minimal() +
+  labs(x = "Salix herbacea (0=abs, 1=pres)",
+       y = "Carex myosuroides (0=abs, 1=pres)",
+       title = "Co-occurrence des deux espèces")
+```
+
+
+```{r}
+ggplot(df, aes(x = X_L93, y = Y_L93, color = interaction(Carex, Salix))) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("grey50", "orange", "blue", "green"),
+                     labels = c("Aucune", "Carex seule", "Salix seule", "Les deux")) +
+  theme_minimal() +
+  labs(title = "Distribution spatiale des co-occurrences",
+       color = "Présence des espèces")
+```
+
+```{r}
+cor.test(df$Carex, df$Salix, method = "spearman")  # test de corrélation non paramétrique
+
+```
+
+```{r}
+library(tidyverse)
+
+df <- final_salix_herb %>%
+  rename(
+    Carex = `Care myos`,
+    Salix = `Sali herb`
+  )
+
+# Vérification
+unique(df$Year)
+
+# ------------------------
+# 2️⃣ Test de cooccurrence séparé par année
+# ------------------------
+
+# --- Pour 2001 ---
+df_2001 <- df %>% filter(Year == 2001)
+tab_2001 <- table(df_2001$Carex, df_2001$Salix)
+tab_2001
+
+test_2001 <- fisher.test(tab_2001)
+test_2001
+
+# --- Pour 2022 ---
+df_2022 <- df %>% filter(Year == 2022)
+tab_2022 <- table(df_2022$Carex, df_2022$Salix)
+tab_2022
+
+test_2022 <- fisher.test(tab_2022)
+test_2022
+
+# ------------------------
+# 3️⃣ Résumé des résultats
+# ------------------------
+results <- tibble(
+  Year = c(2001, 2022),
+  p_value = c(test_2001$p.value, test_2022$p.value),
+  odds_ratio = c(test_2001$estimate, test_2022$estimate),
+  CI_low = c(test_2001$conf.int[1], test_2022$conf.int[1]),
+  CI_high = c(test_2001$conf.int[2], test_2022$conf.int[2])
+)
+
+print(results)
+```
+
+En 2001
+L’odds ratio < 1 (0.63) suggère une tendance à l’exclusion,
+
+👉 mais pas significative statistiquement (p = 0.12).
+Autrement dit, en 2001, Salix herbacea et Carex myosuroides pouvaient coexister dans certains plots, sans qu’on détecte un schéma clair d’exclusion ou d’association.
+
+En 2022
+
+L’odds ratio chute à 0.21, et le test devient hautement significatif (p < 0.001).
+Cela signifie qu’en 2022, les deux espèces sont nettement moins souvent retrouvées ensemble qu’attendu aléatoirement.
+→ Leur co-occurrence a diminué dans le temps.
 
 
 
 
 
+```{r}
+ 1️⃣ Packages
+# -------------------------------
+library(tidyverse)
+library(ggplot2)
+library(patchwork)  # pour mettre deux cartes côte à côte
 
+# -------------------------------
+# 2️⃣ Préparation des données
+# -------------------------------
+df <- final_salix_herb %>%
+  rename(
+    Carex = `Care myos`,
+    Salix = `Sali herb`
+  ) %>%
+  mutate(
+    combo = case_when(
+      Carex == 1 & Salix == 1 ~ "Les deux",
+      Carex == 1 & Salix == 0 ~ "Carex seule",
+      Carex == 0 & Salix == 1 ~ "Salix seule",
+      TRUE ~ "Aucune"
+    )
+  )
 
+# -------------------------------
+# 3️⃣ Séparer les années
+# -------------------------------
+df_2001 <- df %>% filter(Year == 2001)
+df_2022 <- df %>% filter(Year == 2022)
 
+# -------------------------------
+# 4️⃣ Créer les cartes
+# -------------------------------
+carte_2001 <- ggplot(df_2001, aes(x = X_L93, y = Y_L93, color = combo)) +
+  geom_point(size = 3, alpha = 0.8) +
+  scale_color_manual(values = c("grey60", "orange", "blue", "green")) +
+  theme_minimal() +
+  coord_equal() +
+  labs(title = "2001 - Distribution des espèces",
+       color = "Présence")
+
+carte_2022 <- ggplot(df_2022, aes(x = X_L93, y = Y_L93, color = combo)) +
+  geom_point(size = 3, alpha = 0.8) +
+  scale_color_manual(values = c("grey60", "orange", "blue", "green")) +
+  theme_minimal() +
+  coord_equal() +
+  labs(title = "2022 - Distribution des espèces",
+       color = "Présence")
+
+# -------------------------------
+# 5️⃣ Afficher côte à côte
+# -------------------------------
+carte_2001 + carte_2022
+```
+```{r}
+# -------------------------------
+# 1️⃣ Packages nécessaires
+# -------------------------------
+library(tidyverse)
+library(patchwork)  # pour combiner les cartes
+
+# -------------------------------
+# 2️⃣ Préparation des données
+# -------------------------------
+df <- final_salix_herb %>%
+  rename(
+    Carex = `Care myos`,
+    Salix = `Sali herb`
+  ) %>%
+  mutate(
+    combo = case_when(
+      Carex == 1 & Salix == 1 ~ "Les deux espèces",
+      Carex == 1 & Salix == 0 ~ "Carex seule",
+      Carex == 0 & Salix == 1 ~ "Salix seule",
+      TRUE ~ "Aucune des deux"
+    )
+  )
+
+# -------------------------------
+# 3️⃣ Séparer les années
+# -------------------------------
+df_2001 <- df %>% filter(Year == 2001)
+df_2022 <- df %>% filter(Year == 2022)
+
+# -------------------------------
+# 4️⃣ Définir les couleurs et le thème
+# -------------------------------
+couleurs <- c(
+  "Aucune des deux" = "grey70",
+  "Carex seule" = "#E69F00",  # orange
+  "Salix seule" = "#0072B2",  # bleu
+  "Les deux espèces" = "#009E73"  # vert
+)
+
+theme_carte <- theme_minimal(base_size = 13) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    legend.box = "horizontal",
+    legend.text = element_text(size = 12),
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5)
+  )
+
+# -------------------------------
+# 5️⃣ Créer les cartes
+# -------------------------------
+carte_2001 <- ggplot(df_2001, aes(x = X_L93, y = Y_L93, color = combo)) +
+  geom_point(size = 3, alpha = 0.85) +
+  scale_color_manual(values = couleurs) +
+  coord_equal() +
+  theme_carte +
+  labs(title = "2001")
+
+carte_2022 <- ggplot(df_2022, aes(x = X_L93, y = Y_L93, color = combo)) +
+  geom_point(size = 3, alpha = 0.85) +
+  scale_color_manual(values = couleurs) +
+  coord_equal() +
+  theme_carte +
+  labs(title = "2022")
+
+# -------------------------------
+# 6️⃣ Assembler les deux cartes
+# -------------------------------
+(carte_2001 + carte_2022) +
+  plot_annotation(
+    title = "Distribution spatiale de Carex myosuroides et Salix herbacea",
+    subtitle = "Comparaison entre 2001 et 2022 dans l'écosystème alpin de l'Aravo",
+    theme = theme(plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+                  plot.subtitle = element_text(size = 13, hjust = 0.5))
+  )
+```
 
