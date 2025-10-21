@@ -6,6 +6,7 @@ output: html_document
 ---
 
 ```{r}
+
 library(readxl)
 REL2001 <- read_excel("ARAVO_RESURVEY_GRID.xlsx", 
     sheet = "REL2001")
@@ -699,4 +700,85 @@ carte_2022 <- ggplot(df_2022, aes(x = X_L93, y = Y_L93, color = combo)) +
                   plot.subtitle = element_text(size = 13, hjust = 0.5))
   )
 ```
+
+# Jeu de donnée du CBNA avec Carex at Saule
+
+
+
+
+
+```{r}
+chk.REL <- read.csv("20251019_CBNAdb_RELEVES_Carex_myosuroides.csv",row.names=1)
+    chk.SIT <- read.csv("20251019_CBNAdb_SITES_Carex_myosuroides.csv")
+    all.equal(rownames(chk.REL),as.character(chk.SIT$id_releve))  
+    dim(chk.REL);dim(chk.SIT)
+chk.REL
+```
+
+```{r}
+Sal.REL <- read.csv("20251019_CBNAdb_RELEVES_Salix_herbacea.csv",row.names=1)
+    Sal.SIT <- read.csv("20251019_CBNAdb_SITES_Salix_herbacea.csv")
+    all.equal(rownames(chk.REL),as.character(chk.SIT$id_releve))  
+    dim(chk.REL);dim(chk.SIT)
+Sal.REL
+```
+
+```{r}
+library(dplyr)
+library(tibble)
+```
+
+```{r}
+# --- Vérification des correspondances d’identifiants ---
+all.equal(rownames(chk.REL), as.character(chk.SIT$id_releve))
+all.equal(rownames(Sal.REL), as.character(Sal.SIT$id_releve))
+
+# --- Jointure des relevés et des métadonnées pour chaque espèce ---
+chk.full <- chk.SIT %>%
+  left_join(chk.REL %>% rownames_to_column("id_releve"), by = "id_releve")
+
+Sal.full <- Sal.SIT %>%
+  left_join(Sal.REL %>% rownames_to_column("id_releve"), by = "id_releve")
+
+# --- Filtrer les relevés postérieurs à 1990 ---
+chk.full <- chk.full %>% filter(year >= 1990)
+Sal.full <- Sal.full %>% filter(year >= 1990)
+
+# --- Identifier les relevés communs aux deux espèces ---
+releves_communs <- intersect(chk.full$id_releve, Sal.full$id_releve)
+
+# --- Extraire les relevés communs ---
+chk.communs <- chk.full %>% filter(id_releve %in% releves_communs)
+Sal.communs <- Sal.full %>% filter(id_releve %in% releves_communs)
+
+# --- Créer une table indiquant la présence/absence des deux espèces ---
+Presence.combined <- full_join(
+  chk.full %>% mutate(Carex_present = TRUE) %>% select(id_releve, Carex_present),
+  Sal.full %>% mutate(Salix_present = TRUE) %>% select(id_releve, Salix_present),
+  by = "id_releve"
+) %>%
+  mutate(Carex_present = ifelse(is.na(Carex_present), FALSE, Carex_present),
+         Salix_present = ifelse(is.na(Salix_present), FALSE, Salix_present)) %>%
+  mutate(both_species = Carex_present & Salix_present)
+
+# --- Résumé rapide ---
+cat("\nNombre de relevés Carex post-1990 :", nrow(chk.full))
+cat("\nNombre de relevés Salix post-1990 :", nrow(Sal.full))
+cat("\nNombre de relevés avec les deux espèces :", sum(Presence.combined$both_species))
+
+# --- Visualiser les relevés communs ---
+Presence.combined %>%
+  filter(both_species) %>%
+  head()
+```
+
+
+
+
+
+
+
+
+
+
 
