@@ -809,6 +809,16 @@ ggplot(releves_communs_df, aes(x = x_l93, y = y_l93, color = factor(YR.REL))) +
 ```
 
 
+```{r}
+chk.full
+```
+
+```{r}
+releves_communs_df
+```
+
+
+
 
 ```{r}
 Presence.combined
@@ -939,25 +949,64 @@ ggplot(chk.SIT, aes(x = x_l93, y = y_l93, color = as.factor(YR.REL))) +
 ```
 
 
-
 ```{r}
 library(dplyr)
 
-# --- Ajouter les altitudes et années Carex et Salix dans Presence.combined ---
+# --- 1. Ajouter altitudes, années ET coordonnées depuis chk.SIT (Carex) et Sal.SIT (Salix) ---
 Presence.combined <- Presence.combined %>%
   left_join(
     chk.SIT %>%
-      dplyr::select(id_releve, ELEV, YR.REL) %>%
-      rename(ELEV_carex = ELEV, YEAR_carex = YR.REL),
+      dplyr::select(id_releve, ELEV, YR.REL, x_l93, y_l93) %>%
+      rename(
+        ELEV_carex = ELEV,
+        YEAR_carex = YR.REL,
+        x_l93_carex = x_l93,
+        y_l93_carex = y_l93
+      ),
     by = "id_releve"
   ) %>%
   left_join(
     Sal.SIT %>%
-      dplyr::select(id_releve, ELEV, YR.REL) %>%
-      rename(ELEV_salix = ELEV, YEAR_salix = YR.REL),
+      dplyr::select(id_releve, ELEV, YR.REL, x_l93, y_l93) %>%
+      rename(
+        ELEV_salix = ELEV,
+        YEAR_salix = YR.REL,
+        x_l93_salix = x_l93,
+        y_l93_salix = y_l93
+      ),
     by = "id_releve"
+  ) %>%
+  # --- 2. Fusion des colonnes ---
+  mutate(
+    ELEV = coalesce(ELEV_carex, ELEV_salix),
+    YR.REL = coalesce(YEAR_carex, YEAR_salix),
+    x_l93 = coalesce(x_l93_carex, x_l93_salix),
+    y_l93 = coalesce(y_l93_carex, y_l93_salix)
   )
+
+# --- 3. Vérification rapide ---
+cat("✅ Fusion terminée :", nrow(Presence.combined), "relevés\n")
+cat("Colonnes disponibles :\n")
+print(names(Presence.combined))
+
+# --- 4. Enregistrement du fichier CSV ---
+# Détecte automatiquement le répertoire où se trouve ton script
+output_path <- file.path(dirname(rstudioapi::getActiveDocumentContext()$path),
+                         "Presence_combined_with_coords.csv")
+
+write.csv(Presence.combined, output_path, row.names = FALSE)
+
+cat("💾 Fichier enregistré à l'emplacement suivant :\n", output_path, "\n")
+
 ```
+
+
+
+
+```{r}
+Presence.combined
+```
+
 
 
 ```{r}
@@ -994,13 +1043,7 @@ cat("Différences d'année :", nb_diff_year, "\n")
 
 ```
 
-```{r}
-Presence.combined <- Presence.combined %>%
-  mutate(
-    ELEV = coalesce(ELEV_carex, ELEV_salix),
-    YR.REL = coalesce(YEAR_carex, YEAR_salix)
-  )
-```
+
 
 ```{r}
 glm_carex <- glm(Carex_present ~ ELEV + YR.REL, data = Presence.combined, family = binomial)
@@ -1009,6 +1052,7 @@ glm_salix <- glm(Salix_present ~ ELEV + YR.REL, data = Presence.combined, family
 summary(glm_carex)
 summary(glm_salix)
 ```
+
 ```{r}
 overdisp_fun <- function(model) {
   rdf <- df.residual(model)
@@ -1035,9 +1079,6 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 
-# --- 1. Modèles GLM pour chaque espèce ---
-glm_carex <- glm(Carex_present ~ ELEV, data = Presence.combined, family = binomial)
-glm_salix <- glm(Salix_present ~ ELEV, data = Presence.combined, family = binomial)
 
 # --- 2. Création du jeu de données pour prédictions ---
 newdata <- data.frame(ELEV = seq(min(Presence.combined$ELEV, na.rm = TRUE),
@@ -1082,9 +1123,7 @@ ggplot(pred_df, aes(x = ELEV, y = Probability, color = Species)) +
   )
 ```
 
-```{r}
-Presence.combined
-```
+
 
 
 
