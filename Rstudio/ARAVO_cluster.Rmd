@@ -705,8 +705,6 @@ carte_2022 <- ggplot(df_2022, aes(x = X_L93, y = Y_L93, color = combo)) +
 
 
 
-
-
 ```{r}
 chk.REL <- read.csv("20251019_CBNAdb_RELEVES_Carex_myosuroides.csv",row.names=1)
     chk.SIT <- read.csv("20251019_CBNAdb_SITES_Carex_myosuroides.csv")
@@ -716,7 +714,7 @@ chk.REL
 ```
 
 ```{r}
-Sal.REL <- read.csv("20251019_CBNAdb_RELEVES_Salix_herbacea.csv",row.names=1)
+Sal.REL <- read.csv("20251019_CBNAdb_RELEVES_Salix_herbacea.csv")
     Sal.SIT <- read.csv("20251019_CBNAdb_SITES_Salix_herbacea.csv")
     all.equal(rownames(chk.REL),as.character(chk.SIT$id_releve))  
     dim(chk.REL);dim(chk.SIT)
@@ -729,48 +727,378 @@ library(tibble)
 ```
 
 ```{r}
-# --- Vérification des correspondances d’identifiants ---
-all.equal(rownames(chk.REL), as.character(chk.SIT$id_releve))
-all.equal(rownames(Sal.REL), as.character(Sal.SIT$id_releve))
 
-# --- Jointure des relevés et des métadonnées pour chaque espèce ---
-chk.full <- chk.SIT %>%
-  left_join(chk.REL %>% rownames_to_column("id_releve"), by = "id_releve")
+# --- 1. Lecture des fichiers REL et SIT ---
+chk.REL <- read.csv("20251019_CBNAdb_RELEVES_Carex_myosuroides.csv", stringsAsFactors = FALSE)
+chk.SIT <- read.csv("20251019_CBNAdb_SITES_Carex_myosuroides.csv", stringsAsFactors = FALSE)
 
-Sal.full <- Sal.SIT %>%
-  left_join(Sal.REL %>% rownames_to_column("id_releve"), by = "id_releve")
+Sal.REL <- read.csv("20251019_CBNAdb_RELEVES_Salix_herbacea.csv", stringsAsFactors = FALSE)
+Sal.SIT <- read.csv("20251019_CBNAdb_SITES_Salix_herbacea.csv", stringsAsFactors = FALSE)
 
-# --- Filtrer les relevés postérieurs à 1990 ---
-chk.full <- chk.full %>% filter(year >= 1990)
-Sal.full <- Sal.full %>% filter(year >= 1990)
+# --- 2. Renommer la colonne X (si nécessaire) ---
+if("X" %in% names(chk.REL)) names(chk.REL)[names(chk.REL) == "X"] <- "id_releve"
+if("X" %in% names(Sal.REL)) names(Sal.REL)[names(Sal.REL) == "X"] <- "id_releve"
 
-# --- Identifier les relevés communs aux deux espèces ---
+# --- 3. Harmoniser les types d'identifiant ---
+chk.REL$id_releve <- as.character(chk.REL$id_releve)
+chk.SIT$id_releve <- as.character(chk.SIT$id_releve)
+Sal.REL$id_releve <- as.character(Sal.REL$id_releve)
+Sal.SIT$id_releve <- as.character(Sal.SIT$id_releve)
+
+# --- 4. Fusion des relevés avec les métadonnées ---
+chk.full <- left_join(chk.SIT, chk.REL, by = "id_releve")
+Sal.full <- left_join(Sal.SIT, Sal.REL, by = "id_releve")
+
+# --- 5. Filtrer les relevés postérieurs à 1990 ---
+chk.full <- chk.full %>% filter(YR.REL >= 1990)
+Sal.full <- Sal.full %>% filter(YR.REL >= 1990)
+
+# --- 6. Identifier les relevés communs ---
 releves_communs <- intersect(chk.full$id_releve, Sal.full$id_releve)
 
-# --- Extraire les relevés communs ---
+# --- 7. Extraire les relevés communs ---
 chk.communs <- chk.full %>% filter(id_releve %in% releves_communs)
 Sal.communs <- Sal.full %>% filter(id_releve %in% releves_communs)
 
-# --- Créer une table indiquant la présence/absence des deux espèces ---
+# --- 8. Table combinée présence/absence des deux espèces ---
+
 Presence.combined <- full_join(
-  chk.full %>% mutate(Carex_present = TRUE) %>% select(id_releve, Carex_present),
-  Sal.full %>% mutate(Salix_present = TRUE) %>% select(id_releve, Salix_present),
+  chk.full %>% dplyr::select(id_releve) %>% dplyr::mutate(Carex_present = 1),
+  Sal.full %>% dplyr::select(id_releve) %>% dplyr::mutate(Salix_present = 1),
   by = "id_releve"
 ) %>%
-  mutate(Carex_present = ifelse(is.na(Carex_present), FALSE, Carex_present),
-         Salix_present = ifelse(is.na(Salix_present), FALSE, Salix_present)) %>%
-  mutate(both_species = Carex_present & Salix_present)
+  mutate(
+    Carex_present = ifelse(is.na(Carex_present), 0, Carex_present),
+    Salix_present = ifelse(is.na(Salix_present), 0, Salix_present),
+    both_species = ifelse(Carex_present == 1 & Salix_present == 1, 1, 0)
+  )
 
-# --- Résumé rapide ---
+
+# --- 9. Résumé rapide ---
 cat("\nNombre de relevés Carex post-1990 :", nrow(chk.full))
 cat("\nNombre de relevés Salix post-1990 :", nrow(Sal.full))
 cat("\nNombre de relevés avec les deux espèces :", sum(Presence.combined$both_species))
 
-# --- Visualiser les relevés communs ---
-Presence.combined %>%
-  filter(both_species) %>%
-  head()
+# --- 10. Carte des relevés communs ---
+# On récupère les coordonnées à partir de chk.SIT (ou Sal.SIT si préférence)
+
+releves_communs_df <- Presence.combined %>%
+  filter(both_species == 1) %>%   # 1 = les deux espèces présentes
+  left_join(chk.SIT %>% dplyr::select(id_releve, x_l93, y_l93), by = "id_releve")
+
+ggplot(releves_communs_df, aes(x = x_l93, y = y_l93)) +
+  geom_point(color = "darkgreen", size = 3) +
+  theme_minimal() +
+  labs(title = "Relevés communs Carex myosuroides & Salix herbacea",
+       x = "Coordonnée X (L93)",
+       y = "Coordonnée Y (L93)") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+# --- Optionnel : carte colorée par année ---
+releves_communs_df <- Presence.combined %>%
+  filter(both_species == 1) %>%
+  left_join(chk.SIT %>% dplyr::select(id_releve, x_l93, y_l93, YR.REL), by = "id_releve")
+ggplot(releves_communs_df, aes(x = x_l93, y = y_l93, color = factor(YR.REL))) +
+  geom_point(size = 3) +
+  theme_minimal() +
+  labs(title = "Relevés communs Carex & Salix par année",
+       x = "Coordonnée X (L93)",
+       y = "Coordonnée Y (L93)",
+       color = "Année") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
 ```
+
+
+
+```{r}
+Presence.combined
+```
+
+
+
+
+
+```{r}
+chk.REL
+```
+
+```{r}
+chk.SIT
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Calculer le nombre de relevés communs par année
+evolution <- Presence.combined %>%
+  left_join(chk.SIT %>% dplyr::select(id_releve, YR.REL), by = "id_releve") %>%
+  filter(!is.na(YR.REL)) %>%
+  group_by(YR.REL) %>%
+  summarise(n_communs = sum(both_species),
+            n_total = n(),
+            prop_communs = n_communs / n_total)
+
+# Graphique du nombre de relevés communs par année
+ggplot(evolution, aes(x = YR.REL, y = n_communs)) +
+  geom_line(color = "darkgreen") +
+  geom_point(color = "darkgreen") +
+  theme_minimal() +
+  labs(title = "Évolution des relevés communs Carex & Salix par année",
+       x = "Année",
+       y = "Nombre de relevés communs")
+```
+
+
+```{r}
+ggplot(evolution, aes(x = YR.REL, y = prop_communs)) +
+  geom_line(color = "darkblue") +
+  geom_point(color = "darkblue") +
+  theme_minimal() +
+  labs(title = "Proportion de relevés avec Carex & Salix par année",
+       x = "Année",
+       y = "Proportion de relevés communs")
+```
+
+```{r}
+ggplot(evolution, aes(x = YR.REL, y = prop_communs)) +
+  geom_point(color = "darkblue") +
+  geom_smooth(method = "loess", color = "red") +
+  theme_minimal() +
+  labs(title = "Tendance des co-occurrences Carex & Salix",
+       x = "Année",
+       y = "Proportion de relevés communs")
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# --- Créer une table avec les années et présence des espèces ---
+evolution_full <- Presence.combined %>%
+  left_join(chk.SIT %>% dplyr::select(id_releve, YR.REL), by = "id_releve") %>%
+  filter(!is.na(YR.REL)) %>%
+  group_by(YR.REL) %>%
+  summarise(
+    n_carex_only = sum(Carex_present == 1 & Salix_present == 0),
+    n_salix_only = sum(Carex_present == 0 & Salix_present == 1),
+    n_both = sum(both_species == 1)
+  ) %>%
+  tidyr::pivot_longer(
+    cols = c(n_carex_only, n_salix_only, n_both),
+    names_to = "type",
+    values_to = "count"
+  )
+
+# --- Visualisation ---
+ggplot(evolution_full, aes(x = YR.REL, y = count, color = type)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  theme_minimal() +
+  scale_color_manual(
+    values = c("n_carex_only" = "green", "n_salix_only" = "blue", "n_both" = "red"),
+    labels = c("Carex seul", "Salix seul", "Les deux espèces")
+  ) +
+  labs(
+    title = "Évolution des relevés Carex, Salix et communs par année",
+    x = "Année",
+    y = "Nombre de relevés",
+    color = "Type de relevé"
+  ) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+# Vérification des effectifs par an 
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# --- Vérifier le nombre de relevés par année ---
+releves_par_an <- Presence.combined %>%
+  left_join(chk.SIT %>% dplyr::select(id_releve, YR.REL), by = "id_releve") %>%
+  count(YR.REL)
+
+# --- Visualisation ---
+ggplot(releves_par_an, aes(x = YR.REL, y = n)) +
+  geom_col(fill = "steelblue") +
+  theme_minimal() +
+  labs(
+    title = "Nombre de relevés par année",
+    x = "Année",
+    y = "Nombre de relevés"
+  )
+```
+
+```{r}
+ggplot(chk.SIT, aes(x = x_l93, y = y_l93, color = as.factor(YR.REL))) +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "Répartition spatiale des relevés au fil du temps",
+       x = "X L93", y = "Y L93", color = "Année")
+```
+
+
+
+```{r}
+library(dplyr)
+
+# --- Ajouter les altitudes et années Carex et Salix dans Presence.combined ---
+Presence.combined <- Presence.combined %>%
+  left_join(
+    chk.SIT %>%
+      dplyr::select(id_releve, ELEV, YR.REL) %>%
+      rename(ELEV_carex = ELEV, YEAR_carex = YR.REL),
+    by = "id_releve"
+  ) %>%
+  left_join(
+    Sal.SIT %>%
+      dplyr::select(id_releve, ELEV, YR.REL) %>%
+      rename(ELEV_salix = ELEV, YEAR_salix = YR.REL),
+    by = "id_releve"
+  )
+```
+
+
+```{r}
+library(dplyr)
+
+# --- 1. Identifier les id communs entre les deux jeux de données ---
+intersect_ids <- intersect(chk.SIT$id_releve, Sal.SIT$id_releve)
+cat("Nombre de relevés communs :", length(intersect_ids), "\n")
+
+
+# --- Redéfinir les sélections avec dplyr::select() explicite pour éviter les conflits ---
+compare_sites <- chk.SIT %>%
+  dplyr::filter(id_releve %in% intersect_ids) %>%
+  dplyr::select(id_releve, ELEV, YR.REL, x_l93, y_l93) %>%
+  dplyr::left_join(
+    Sal.SIT %>%
+      dplyr::select(id_releve, ELEV, YR.REL, x_l93, y_l93),
+    by = "id_releve",
+    suffix = c("_carex", "_salix")
+  )
+
+# --- Vérification des différences ---
+nb_diff_elev <- sum(compare_sites$ELEV_carex != compare_sites$ELEV_salix, na.rm = TRUE)
+nb_diff_year <- sum(compare_sites$YR.REL_carex != compare_sites$YR.REL_salix, na.rm = TRUE)
+
+cat("Différences d'altitude :", nb_diff_elev, "\n")
+cat("Différences d'année :", nb_diff_year, "\n")
+# --- 3. Vérification des différences ---
+nb_diff_elev <- sum(compare_sites$ELEV_carex != compare_sites$ELEV_salix, na.rm = TRUE)
+nb_diff_year <- sum(compare_sites$YR.REL_carex != compare_sites$YR.REL_salix, na.rm = TRUE)
+
+cat("Différences d'altitude :", nb_diff_elev, "\n")
+cat("Différences d'année :", nb_diff_year, "\n")
+
+```
+
+```{r}
+Presence.combined <- Presence.combined %>%
+  mutate(
+    ELEV = coalesce(ELEV_carex, ELEV_salix),
+    YR.REL = coalesce(YEAR_carex, YEAR_salix)
+  )
+```
+
+```{r}
+glm_carex <- glm(Carex_present ~ ELEV + YR.REL, data = Presence.combined, family = binomial)
+glm_salix <- glm(Salix_present ~ ELEV + YR.REL, data = Presence.combined, family = binomial)
+
+summary(glm_carex)
+summary(glm_salix)
+```
+```{r}
+overdisp_fun <- function(model) {
+  rdf <- df.residual(model)
+  rp <- residuals(model, type = "pearson")
+  Pearson.chisq <- sum(rp^2)
+  prat <- Pearson.chisq / rdf
+  pval <- pchisq(Pearson.chisq, df = rdf, lower.tail = FALSE)
+  c(chisq = Pearson.chisq, ratio = prat, rdf = rdf, p = pval)
+}
+
+overdisp_fun(glm_carex)
+overdisp_fun(glm_salix)
+```
+
+```{r}
+exp(coef(glm_carex))
+exp(coef(glm_salix))
+```
+
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# --- 1. Modèles GLM pour chaque espèce ---
+glm_carex <- glm(Carex_present ~ ELEV, data = Presence.combined, family = binomial)
+glm_salix <- glm(Salix_present ~ ELEV, data = Presence.combined, family = binomial)
+
+# --- 2. Création du jeu de données pour prédictions ---
+newdata <- data.frame(ELEV = seq(min(Presence.combined$ELEV, na.rm = TRUE),
+                                 max(Presence.combined$ELEV, na.rm = TRUE),
+                                 length.out = 200))
+
+newdata$Carex_pred <- predict(glm_carex, newdata = newdata, type = "response")
+newdata$Salix_pred <- predict(glm_salix, newdata = newdata, type = "response")
+
+# --- 3. Mise en forme longue pour ggplot ---
+pred_df <- newdata %>%
+  tidyr::pivot_longer(cols = c(Carex_pred, Salix_pred),
+                      names_to = "Species",
+                      values_to = "Probability") %>%
+  mutate(Species = dplyr::recode(Species,
+                                 "Carex_pred" = "Carex myosuroides",
+                                 "Salix_pred" = "Salix herbacea"))
+
+# --- 4. Visualisation ---
+ggplot(pred_df, aes(x = ELEV, y = Probability, color = Species)) +
+  geom_line(size = 1.3) +
+  geom_point(data = Presence.combined %>%
+               tidyr::pivot_longer(cols = c(Carex_present, Salix_present),
+                                   names_to = "Species",
+                                   values_to = "Presence") %>%
+               mutate(Species = dplyr::recode(Species,
+                                              "Carex_present" = "Carex myosuroides",
+                                              "Salix_present" = "Salix herbacea")),
+             aes(x = ELEV, y = Presence),
+             alpha = 0.2, size = 1) +
+  theme_minimal(base_size = 13) +
+  labs(
+    title = "Effet de l'altitude sur la probabilité de présence",
+    subtitle = "Modèle logistique binomial",
+    x = "Altitude (m)",
+    y = "Probabilité de présence",
+    color = "Espèce"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.position = "top"
+  )
+```
+
+```{r}
+Presence.combined
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
