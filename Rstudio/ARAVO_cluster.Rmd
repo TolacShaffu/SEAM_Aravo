@@ -570,7 +570,7 @@ Cela signifie qu’en 2022, les deux espèces sont nettement moins souvent retro
 
 
 ```{r}
- 1️⃣ Packages
+
 # -------------------------------
 library(tidyverse)
 library(ggplot2)
@@ -623,6 +623,9 @@ carte_2022 <- ggplot(df_2022, aes(x = X_L93, y = Y_L93, color = combo)) +
 # -------------------------------
 carte_2001 + carte_2022
 ```
+
+
+
 ```{r}
 # -------------------------------
 # 1️⃣ Packages nécessaires
@@ -701,121 +704,268 @@ carte_2022 <- ggplot(df_2022, aes(x = X_L93, y = Y_L93, color = combo)) +
   )
 ```
 
-# Jeu de donnée du CBNA avec Carex at Saule
 
 
+
+# Ici on a la nouvelle version pour aravo completed 
 
 ```{r}
-chk.REL <- read.csv("20251019_CBNAdb_RELEVES_Carex_myosuroides.csv",row.names=1)
-    chk.SIT <- read.csv("20251019_CBNAdb_SITES_Carex_myosuroides.csv")
-    all.equal(rownames(chk.REL),as.character(chk.SIT$id_releve))  
-    dim(chk.REL);dim(chk.SIT)
-chk.REL
+ df <- read.csv2("final_salix_carex2.0.csv", stringsAsFactors = FALSE)
+df
+```
+```{r}
+# Renommer pour simplifier
+df <- df %>%
+  rename(
+    Carex = `Care.myos`,
+    Salix = `Sali.herb`
+  )
+
+# Vérification
+glimpse(df)
 ```
 
 ```{r}
-Sal.REL <- read.csv("20251019_CBNAdb_RELEVES_Salix_herbacea.csv")
-    Sal.SIT <- read.csv("20251019_CBNAdb_SITES_Salix_herbacea.csv")
-    all.equal(rownames(chk.REL),as.character(chk.SIT$id_releve))  
-    dim(chk.REL);dim(chk.SIT)
-Sal.REL
+# Table croisée de co-occurrence
+tab <- table(df$Carex, df$Salix)
+tab
 ```
 
 ```{r}
-library(dplyr)
-library(tibble)
+# Graphique de cooccurrence
+df %>%
+  count(Carex, Salix) %>%
+  ggplot(aes(x = factor(Salix), y = factor(Carex), size = n, color = n)) +
+  geom_point() +
+  scale_size(range = c(3,10)) +
+  theme_minimal() +
+  labs(x = "Salix herbacea (0=abs, 1=pres)",
+       y = "Carex myosuroides (0=abs, 1=pres)",
+       title = "Co-occurrence des deux espèces")
 ```
+
+
+```{r}
+ggplot(df, aes(x = X_L93, y = Y_L93, color = interaction(Carex, Salix))) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("grey50", "orange", "blue", "green"),
+                     labels = c("Aucune", "Carex seule", "Salix seule", "Les deux")) +
+  theme_minimal() +
+  labs(title = "Distribution spatiale des co-occurrences",
+       color = "Présence des espèces")
+```
+
+
 
 ```{r}
 
-# --- 1. Lecture des fichiers REL et SIT ---
-chk.REL <- read.csv("20251019_CBNAdb_RELEVES_Carex_myosuroides.csv", stringsAsFactors = FALSE)
-chk.SIT <- read.csv("20251019_CBNAdb_SITES_Carex_myosuroides.csv", stringsAsFactors = FALSE)
+# -------------------------------
+# 1️⃣ Packages nécessaires
+# -------------------------------
+library(tidyverse)
+library(patchwork) # pour combiner les cartes
 
-Sal.REL <- read.csv("20251019_CBNAdb_RELEVES_Salix_herbacea.csv", stringsAsFactors = FALSE)
-Sal.SIT <- read.csv("20251019_CBNAdb_SITES_Salix_herbacea.csv", stringsAsFactors = FALSE)
+# -------------------------------
+# 2️⃣ Import et préparation des données
+# -------------------------------
 
-# --- 2. Renommer la colonne X (si nécessaire) ---
-if("X" %in% names(chk.REL)) names(chk.REL)[names(chk.REL) == "X"] <- "id_releve"
-if("X" %in% names(Sal.REL)) names(Sal.REL)[names(Sal.REL) == "X"] <- "id_releve"
+# Lis ton fichier (format français avec ;) :
+df <- read.csv2("final_salix_carex2.0.csv", stringsAsFactors = FALSE)
 
-# --- 3. Harmoniser les types d'identifiant ---
-chk.REL$id_releve <- as.character(chk.REL$id_releve)
-chk.SIT$id_releve <- as.character(chk.SIT$id_releve)
-Sal.REL$id_releve <- as.character(Sal.REL$id_releve)
-Sal.SIT$id_releve <- as.character(Sal.SIT$id_releve)
-
-# --- 4. Fusion des relevés avec les métadonnées ---
-chk.full <- left_join(chk.SIT, chk.REL, by = "id_releve")
-Sal.full <- left_join(Sal.SIT, Sal.REL, by = "id_releve")
-
-# --- 5. Filtrer les relevés postérieurs à 1990 ---
-chk.full <- chk.full %>% filter(YR.REL >= 1990)
-Sal.full <- Sal.full %>% filter(YR.REL >= 1990)
-
-# --- 6. Identifier les relevés communs ---
-releves_communs <- intersect(chk.full$id_releve, Sal.full$id_releve)
-
-# --- 7. Extraire les relevés communs ---
-chk.communs <- chk.full %>% filter(id_releve %in% releves_communs)
-Sal.communs <- Sal.full %>% filter(id_releve %in% releves_communs)
-
-# --- 8. Table combinée présence/absence des deux espèces ---
-
-Presence.combined <- full_join(
-  chk.full %>% dplyr::select(id_releve) %>% dplyr::mutate(Carex_present = 1),
-  Sal.full %>% dplyr::select(id_releve) %>% dplyr::mutate(Salix_present = 1),
-  by = "id_releve"
-) %>%
+# Renommer les colonnes pour simplifier
+df <- df %>%
+  rename(
+    Carex = Care.myos,
+    Salix = Sali.herb
+  ) %>%
   mutate(
-    Carex_present = ifelse(is.na(Carex_present), 0, Carex_present),
-    Salix_present = ifelse(is.na(Salix_present), 0, Salix_present),
-    both_species = ifelse(Carex_present == 1 & Salix_present == 1, 1, 0)
+    # Créer la variable "combo" selon la présence des deux espèces
+    combo = case_when(
+      Carex == 1 & Salix == 1 ~ "Les deux espèces",
+      Carex == 1 & Salix == 0 ~ "Carex seule",
+      Carex == 0 & Salix == 1 ~ "Salix seule",
+      TRUE ~ "Aucune des deux"
+    )
+  )
+
+# -------------------------------
+# 3️⃣ Séparer les années
+# -------------------------------
+df_2001 <- df %>% filter(Year == 2001)
+df_2022 <- df %>% filter(Year == 2022)
+
+# -------------------------------
+# 4️⃣ Définir les couleurs et le thème
+# -------------------------------
+couleurs <- c(
+  "Aucune des deux" = "grey70",
+  "Carex seule" = "#E69F00",   # orange
+  "Salix seule" = "#0072B2",   # bleu
+  "Les deux espèces" = "#009E73" # vert
+)
+
+theme_carte <- theme_minimal(base_size = 13) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    legend.box = "horizontal",
+    legend.text = element_text(size = 12),
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5)
+  )
+
+# -------------------------------
+# 5️⃣ Créer les cartes
+# -------------------------------
+carte_2001 <- ggplot(df_2001, aes(x = X_L93, y = Y_L93, color = combo)) +
+  geom_point(size = 3, alpha = 0.85) +
+  scale_color_manual(values = couleurs) +
+  coord_equal() +
+  theme_carte +
+  labs(title = "2001")
+
+carte_2022 <- ggplot(df_2022, aes(x = X_L93, y = Y_L93, color = combo)) +
+  geom_point(size = 3, alpha = 0.85) +
+  scale_color_manual(values = couleurs) +
+  coord_equal() +
+  theme_carte +
+  labs(title = "2022")
+
+# -------------------------------
+# 6️⃣ Assembler les deux cartes
+# -------------------------------
+(carte_2001 + carte_2022) +
+  plot_annotation(
+    title = "Distribution spatiale de Carex myosuroides et Salix herbacea",
+    subtitle = "Comparaison entre 2001 et 2022 dans l'écosystème alpin de l'Aravo",
+    theme = theme(
+      plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+      plot.subtitle = element_text(size = 13, hjust = 0.5)
+    )
+  )
+
+```
+
+
+```{r}
+library(tidyverse)
+
+df <- read.csv2("final_salix_carex2.0.csv", stringsAsFactors = FALSE)
+
+# Renommer les colonnes pour simplifier
+df <- df %>%
+  rename(
+    Carex = Care.myos,
+    Salix = Sali.herb
   )
 
 
-# --- 9. Résumé rapide ---
-cat("\nNombre de relevés Carex post-1990 :", nrow(chk.full))
-cat("\nNombre de relevés Salix post-1990 :", nrow(Sal.full))
-cat("\nNombre de relevés avec les deux espèces :", sum(Presence.combined$both_species))
 
-# --- 10. Carte des relevés communs ---
-# On récupère les coordonnées à partir de chk.SIT (ou Sal.SIT si préférence)
 
-releves_communs_df <- Presence.combined %>%
-  filter(both_species == 1) %>%   # 1 = les deux espèces présentes
-  left_join(chk.SIT %>% dplyr::select(id_releve, x_l93, y_l93), by = "id_releve")
+# Vérification
+unique(df$Year)
 
-ggplot(releves_communs_df, aes(x = x_l93, y = y_l93)) +
-  geom_point(color = "darkgreen", size = 3) +
-  theme_minimal() +
-  labs(title = "Relevés communs Carex myosuroides & Salix herbacea",
-       x = "Coordonnée X (L93)",
-       y = "Coordonnée Y (L93)") +
-  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+# ------------------------
+# 2️⃣ Test de cooccurrence séparé par année
+# ------------------------
 
-# --- Optionnel : carte colorée par année ---
-releves_communs_df <- Presence.combined %>%
-  filter(both_species == 1) %>%
-  left_join(chk.SIT %>% dplyr::select(id_releve, x_l93, y_l93, YR.REL), by = "id_releve")
-ggplot(releves_communs_df, aes(x = x_l93, y = y_l93, color = factor(YR.REL))) +
+# --- Pour 2001 ---
+df_2001 <- df %>% filter(Year == 2001)
+tab_2001 <- table(df_2001$Carex, df_2001$Salix)
+tab_2001
+
+test_2001 <- fisher.test(tab_2001)
+test_2001
+
+# --- Pour 2022 ---
+df_2022 <- df %>% filter(Year == 2022)
+tab_2022 <- table(df_2022$Carex, df_2022$Salix)
+tab_2022
+
+test_2022 <- fisher.test(tab_2022)
+test_2022
+
+# ------------------------
+# 3️⃣ Résumé des résultats
+# ------------------------
+results <- tibble(
+  Year = c(2001, 2022),
+  p_value = c(test_2001$p.value, test_2022$p.value),
+  odds_ratio = c(test_2001$estimate, test_2022$estimate),
+  CI_low = c(test_2001$conf.int[1], test_2022$conf.int[1]),
+  CI_high = c(test_2001$conf.int[2], test_2022$conf.int[2])
+)
+
+print(results)
+```
+
+```{r}
+# Créer un modèle logistique
+# Carex ~ Salix + Year
+df$Year <- factor(df$Year)  # transformer en facteur si nécessaire
+model <- glm(Carex ~ Salix * Year, data = df, family = binomial)
+
+summary(model)
+```
+
+```{r}
+# Probabilité de Carex en fonction de Salix et de l'année (en continu)
+df$Year_num <- as.numeric(df$Year)  # si tu veux traiter l'année comme variable continue
+model_trend <- glm(Carex ~ Salix + Year_num, data = df, family = binomial)
+summary(model_trend)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Créer toutes les combinaisons
+newdata <- expand.grid(
+  Salix = c(0,1),
+  Year = factor(c(2001, 2022))
+)
+
+# Probabilités prédites
+newdata$prob <- predict(model, newdata, type = "response")
+
+# Graphique
+ggplot(newdata, aes(x = Year, y = prob, color = factor(Salix), group = Salix)) +
   geom_point(size = 3) +
-  theme_minimal() +
-  labs(title = "Relevés communs Carex & Salix par année",
-       x = "Coordonnée X (L93)",
-       y = "Coordonnée Y (L93)",
-       color = "Année") +
-  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  geom_line() +
+  labs(x = "Année", y = "Probabilité de Carex",
+       color = "Salix") +
+  theme_minimal()
 ```
+
+
+
+
+
+
 
 
 ```{r}
-chk.full
+library(ggplot2)
+
+ggplot(results, aes(x = factor(Year), y = odds_ratio)) +
+  geom_point(color = "blue", size = 3) +                      # points
+  geom_errorbar(aes(ymin = CI_low, ymax = CI_high),           # barres d'erreur
+                width = 0.1, color = "blue") +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red") + # ligne OR = 1
+  ylim(0, max(results$CI_high) + 0.5) +
+  labs(
+    x = "Année",
+    y = "Odds Ratio (OR)",
+    title = "Cooccurrence Carex & Salix"
+  ) +
+  theme_minimal()
 ```
 
-```{r}
-releves_communs_df
-```
+
+
+
+
+
+
 
 
 
@@ -1073,54 +1223,20 @@ exp(coef(glm_salix))
 ```
 
 
+# glm effet altitude, temps et effet combiné
 
 ```{r}
-library(ggplot2)
-library(dplyr)
-library(tidyr)
+glm_alt <- glm(both_species ~ ELEV, data = Presence.combined, family = binomial)
+summary(glm_alt)
+```
+```{r}
+glm_time <- glm(both_species ~ YR.REL, data = Presence.combined, family = binomial)
+summary(glm_time)
+```
 
-
-# --- 2. Création du jeu de données pour prédictions ---
-newdata <- data.frame(ELEV = seq(min(Presence.combined$ELEV, na.rm = TRUE),
-                                 max(Presence.combined$ELEV, na.rm = TRUE),
-                                 length.out = 200))
-
-newdata$Carex_pred <- predict(glm_carex, newdata = newdata, type = "response")
-newdata$Salix_pred <- predict(glm_salix, newdata = newdata, type = "response")
-
-# --- 3. Mise en forme longue pour ggplot ---
-pred_df <- newdata %>%
-  tidyr::pivot_longer(cols = c(Carex_pred, Salix_pred),
-                      names_to = "Species",
-                      values_to = "Probability") %>%
-  mutate(Species = dplyr::recode(Species,
-                                 "Carex_pred" = "Carex myosuroides",
-                                 "Salix_pred" = "Salix herbacea"))
-
-# --- 4. Visualisation ---
-ggplot(pred_df, aes(x = ELEV, y = Probability, color = Species)) +
-  geom_line(size = 1.3) +
-  geom_point(data = Presence.combined %>%
-               tidyr::pivot_longer(cols = c(Carex_present, Salix_present),
-                                   names_to = "Species",
-                                   values_to = "Presence") %>%
-               mutate(Species = dplyr::recode(Species,
-                                              "Carex_present" = "Carex myosuroides",
-                                              "Salix_present" = "Salix herbacea")),
-             aes(x = ELEV, y = Presence),
-             alpha = 0.2, size = 1) +
-  theme_minimal(base_size = 13) +
-  labs(
-    title = "Effet de l'altitude sur la probabilité de présence",
-    subtitle = "Modèle logistique binomial",
-    x = "Altitude (m)",
-    y = "Probabilité de présence",
-    color = "Espèce"
-  ) +
-  theme(
-    plot.title = element_text(face = "bold", hjust = 0.5),
-    legend.position = "top"
-  )
+```{r}
+glm_both <- glm(both_species ~ ELEV + YR.REL, data = Presence.combined, family = binomial)
+summary(glm_both)
 ```
 
 
@@ -1134,18 +1250,1141 @@ ggplot(pred_df, aes(x = ELEV, y = Probability, color = Species)) +
 
 
 
+```{r}
+library(ggplot2)
+
+ggplot(Presence.combined, aes(x = x_l93, y = y_l93)) +
+  geom_point(aes(color = factor(Carex_present)), size = 3, alpha = 0.7) +
+  scale_color_manual(values = c("0" = "grey70", "1" = "darkgreen"),
+                     name = "Carex myosuroides",
+                     labels = c("Absent", "Présent")) +
+  coord_equal() +
+  theme_minimal() +
+  labs(title = "Répartition spatiale de Carex myosuroides",
+       x = "Coordonnée X (L93)",
+       y = "Coordonnée Y (L93)")
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(Presence.combined, aes(x = x_l93, y = y_l93)) +
+  geom_point(aes(color = factor(Salix_present)), size = 3, alpha = 0.7) +
+  scale_color_manual(values = c("0" = "grey70", "1" = "darkgreen"),
+                     name = "Salix herbaceae",
+                     labels = c("Absent", "Présent")) +
+  coord_equal() +
+  theme_minimal() +
+  labs(title = "Répartition spatiale de Carex myosuroides",
+       x = "Coordonnée X (L93)",
+       y = "Coordonnée Y (L93)")
+```
+
+```{r}
+Presence.combined <- Presence.combined %>%
+  mutate(status = case_when(
+    Carex_present == 1 & Salix_present == 1 ~ "Co-occurrence",
+    Carex_present == 1 & Salix_present == 0 ~ "Carex seul",
+    Carex_present == 0 & Salix_present == 1 ~ "Salix seul",
+    TRUE ~ "Aucune"
+  ))
+
+ggplot(Presence.combined, aes(x = x_l93, y = y_l93, color = status)) +
+  geom_point(size = 3, alpha = 0.8) +
+  scale_color_manual(values = c("Co-occurrence" = "purple",
+                                "Carex seul" = "darkgreen",
+                                "Salix seul" = "orange",
+                                "Aucune" = "grey70")) +
+  coord_equal() +
+  theme_minimal() +
+  labs(title = "Distribution spatiale des associations Carex / Salix",
+       x = "Coordonnée X (L93)", y = "Coordonnée Y (L93)",
+       color = "Présence")
+```
+
+```{r}
+ggplot(Presence.combined, aes(x = x_l93, y = y_l93, color = ELEV)) +
+  geom_point(size = 3) +
+  scale_color_viridis_c() +
+  theme_minimal() +
+  labs(title = "Altitude des relevés (Carex / Salix)",
+       x = "Coordonnée X (L93)", y = "Coordonnée Y (L93)",
+       color = "Altitude (m)")
+```
+```{r}
+library(ggplot2)
+
+Presence.combined <- Presence.combined %>%
+  mutate(both_species = as.factor(both_species))
+
+ggplot(Presence.combined, aes(x = x_l93, y = y_l93)) +
+  geom_point(aes(color = ELEV, shape = both_species), size = 3, alpha = 0.8) +
+  scale_color_viridis_c(option = "plasma", name = "Altitude (m)") +
+  scale_shape_manual(
+    values = c("0" = 16, "1" = 17),
+    name = "Co-occurrence",
+    labels = c("Aucune co-occurrence", "Carex + Salix")
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Répartition spatiale Carex / Salix selon l'altitude",
+    x = "Coordonnée X (L93)",
+    y = "Coordonnée Y (L93)"
+  ) +
+  theme(
+    legend.position = "right",
+    legend.box = "vertical"
+  )
+
+```
+
+```{r}
+ggplot(Presence.combined, aes(x = x_l93, y = y_l93, color = as.factor(YR.REL))) +
+  geom_point(size = 3) +
+  scale_color_viridis_d() +
+  theme_minimal() +
+  labs(title = "Évolution spatiale des relevés au fil du temps",
+       x = "Coordonnée X (L93)",
+       y = "Coordonnée Y (L93)",
+       color = "Année du relevé")
+```
+
+
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+Presence.combined %>%
+  filter(!is.na(ELEV)) %>%
+  mutate(both_species = as.factor(both_species)) %>%
+  ggplot(aes(x = both_species, y = ELEV, fill = both_species)) +
+  geom_boxplot(alpha = 0.7) +
+  scale_fill_manual(values = c("0" = "lightgrey", "1" = "purple"),
+                    labels = c("Non co-occurents", "Co-occurents"),
+                    name = "Carex + Salix") +
+  theme_minimal() +
+  labs(
+    title = "Altitude selon la co-occurrence Carex / Salix",
+    x = "Co-occurrence",
+    y = "Altitude (m)"
+  )
+```
+```{r}
+library(ggplot2)
+library(dplyr)
+library(ggpubr)  # Pour annoter les p-values sur les graphes
+
+# --- 1. Préparation des données ---
+data_alt <- Presence.combined %>%
+  filter(!is.na(ELEV)) %>%
+  mutate(both_species = as.factor(both_species))
+
+# --- 2. Test statistique automatique ---
+# Vérification de la normalité
+shapiro_test_0 <- shapiro.test(data_alt$ELEV[data_alt$both_species == "0"])
+shapiro_test_1 <- shapiro.test(data_alt$ELEV[data_alt$both_species == "1"])
+
+if (shapiro_test_0$p.value > 0.05 & shapiro_test_1$p.value > 0.05) {
+  test_result <- t.test(ELEV ~ both_species, data = data_alt)
+  test_label <- paste0("t-test p = ", signif(test_result$p.value, 3))
+  cat("Test t de Student : p =", test_result$p.value, "\n")
+} else {
+  test_result <- wilcox.test(ELEV ~ both_species, data = data_alt)
+  test_label <- paste0("Wilcoxon p = ", signif(test_result$p.value, 3))
+  cat("Test de Wilcoxon : p =", test_result$p.value, "\n")
+}
+
+# --- 3. Boxplot avec annotation ---
+ggplot(data_alt, aes(x = both_species, y = ELEV, fill = both_species)) +
+  geom_boxplot(alpha = 0.7, width = 0.6) +
+  scale_fill_manual(
+    values = c("0" = "lightgrey", "1" = "purple"),
+    labels = c("Non co-occurents", "Co-occurents"),
+    name = "Carex + Salix"
+  ) +
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "Altitude selon la co-occurrence Carex / Salix",
+    x = "Co-occurrence",
+    y = "Altitude (m)"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "none"
+  ) +
+  stat_compare_means(
+    method = ifelse(shapiro_test_0$p.value > 0.05 & shapiro_test_1$p.value > 0.05, "t.test", "wilcox.test"),
+    label = "p.format",
+    label.y = max(data_alt$ELEV, na.rm = TRUE) * 1.05
+  )
+
+```
+# Nous avons comparé les altitudes des relevés co-occurents (Carex myosuroides + Salix herbacea) et non co-occurents à l’aide d’un test de Wilcoxon/t-test. La différence est [significative / non significative] (p = 0,0029)
+
+
+# Ici on modélise la probabilité d’avoir les deux espèces présentes en fonction de l’altitude (optionnellement aussi de l’année).
+
+```{r}
+# GLM logistique
+glm_alt <- glm(both_species ~ ELEV, data = Presence.combined, family = binomial)
+
+summary(glm_alt)
+```
+on a une augmentation de la co-occurence avec l'altitude 
+
+```{r}
+glm_alt_year <- glm(both_species ~ ELEV + YR.REL, 
+                    data = Presence.combined, family = binomial)
+summary(glm_alt_year)
+```
+# l'année a aussi un effet significatif sur la co-occurence. Plus les années passe est mains il y a de co-occurence ( à vérifier)
 
 
 
 
 
 
+--> test de co-occurence en fonction du temps à écrire 
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# --- 1. Vérification de la variable année ---
+summary(Presence.combined$YR.REL)
+# Si tu veux filtrer les années extrêmes ou incohérentes, tu peux faire :
+# Presence.combined <- Presence.combined %>% filter(YR.REL >= 1980)
+
+# --- 2. Modèles logistiques pour chaque espèce ---
+glm_carex_year <- glm(Carex_present ~ YR.REL,
+                      data = Presence.combined,
+                      family = binomial)
+
+glm_salix_year <- glm(Salix_present ~ YR.REL,
+                      data = Presence.combined,
+                      family = binomial)
+
+# --- 3. Création du jeu de données pour prédictions ---
+newdata_year <- data.frame(YR.REL = seq(min(Presence.combined$YR.REL, na.rm = TRUE),
+                                        max(Presence.combined$YR.REL, na.rm = TRUE),
+                                        length.out = 200))
+
+newdata_year$Carex_pred <- predict(glm_carex_year, newdata = newdata_year, type = "response")
+newdata_year$Salix_pred <- predict(glm_salix_year, newdata = newdata_year, type = "response")
+
+# --- 4. Mise en forme longue pour ggplot ---
+pred_df_year <- newdata_year %>%
+  pivot_longer(cols = c(Carex_pred, Salix_pred),
+               names_to = "Species",
+               values_to = "Probability") %>%
+  mutate(Species = case_when(
+    Species == "Carex_pred" ~ "Carex myosuroides",
+    Species == "Salix_pred" ~ "Salix herbacea",
+    TRUE ~ Species
+  ))
+
+# --- 5. Visualisation temporelle ---
+ggplot(pred_df_year, aes(x = YR.REL, y = Probability, color = Species)) +
+  geom_line(size = 1.3) +
+  geom_point(
+    data = Presence.combined %>%
+      pivot_longer(cols = c(Carex_present, Salix_present),
+                   names_to = "Species",
+                   values_to = "Presence") %>%
+      mutate(Species = case_when(
+        Species == "Carex_present" ~ "Carex myosuroides",
+        Species == "Salix_present" ~ "Salix herbacea",
+        TRUE ~ Species
+      )),
+    aes(x = YR.REL, y = Presence),
+    alpha = 0.2, size = 1
+  ) +
+  theme_minimal(base_size = 13) +
+  labs(
+    title = "Évolution temporelle de la probabilité de présence",
+    subtitle = "Modèle logistique binomial (Carex vs Salix)",
+    x = "Année de relevé",
+    y = "Probabilité de présence",
+    color = "Espèce"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.position = "top"
+  )
+
+```
+
+
+```{r}
+glm_cooc_year <- glm(both_species ~ YR.REL,
+                     data = Presence.combined,
+                     family = binomial)
+
+summary(glm_cooc_year)
+
+# Visualisation
+new_cooc <- data.frame(YR.REL = seq(min(Presence.combined$YR.REL, na.rm = TRUE),
+                                    max(Presence.combined$YR.REL, na.rm = TRUE),
+                                    length.out = 200))
+new_cooc$prob_cooc <- predict(glm_cooc_year, newdata = new_cooc, type = "response")
+
+ggplot() +
+  geom_point(data = Presence.combined, aes(x = YR.REL, y = both_species),
+             alpha = 0.3, color = "grey40") +
+  geom_line(data = new_cooc, aes(x = YR.REL, y = prob_cooc),
+            color = "purple", size = 1.2) +
+  theme_minimal() +
+  labs(
+    title = "Évolution temporelle de la co-occurrence Carex / Salix",
+    subtitle = "Modèle logistique binomial",
+    x = "Année de relevé",
+    y = "Probabilité de co-occurrence"
+  )
+
+```
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# --- 1. Préparer les données en format long ---
+df_long <- Presence.combined %>%
+  dplyr::select(id_releve, YR.REL, Carex_present, Salix_present) %>%
+  tidyr::pivot_longer(
+    cols = c(Carex_present, Salix_present),
+    names_to = "Species",
+    values_to = "Presence"
+  ) %>%
+  dplyr::mutate(
+    Species = dplyr::case_when(
+      Species == "Carex_present" ~ "Carex myosuroides",
+      Species == "Salix_present" ~ "Salix herbacea",
+      TRUE ~ Species
+    )
+  )
+
+# --- 2. Modèle logistique combiné (année × espèce) ---
+glm_species_time <- glm(
+  Presence ~ YR.REL * Species,
+  data = df_long,
+  family = binomial
+)
+
+summary(glm_species_time)
+
+# --- 3. Prédictions et visualisation ---
+new_pred <- expand.grid(
+  YR.REL = seq(min(Presence.combined$YR.REL, na.rm = TRUE),
+               max(Presence.combined$YR.REL, na.rm = TRUE),
+               length.out = 200),
+  Species = c("Carex myosuroides", "Salix herbacea")
+)
+
+new_pred$Probability <- predict(glm_species_time, newdata = new_pred, type = "response")
+
+# --- 4. Graphique final ---
+ggplot(new_pred, aes(x = YR.REL, y = Probability, color = Species)) +
+  geom_line(size = 1.3) +
+  geom_point(data = df_long, aes(x = YR.REL, y = Presence, color = Species),
+             alpha = 0.2, size = 1) +
+  theme_minimal(base_size = 13) +
+  labs(
+    title = "Comparaison de la tendance temporelle de présence",
+    subtitle = "Modèle logistique avec interaction (année × espèce)",
+    x = "Année de relevé",
+    y = "Probabilité de présence",
+    color = "Espèce"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.position = "top"
+  )
+
+
+```
 
 
 
 
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# --- 2. Jeu de données pour prédictions ---
+newdata <- data.frame(ELEV = seq(min(Presence.combined$ELEV, na.rm = TRUE),
+                                 max(Presence.combined$ELEV, na.rm = TRUE),
+                                 length.out = 200))
+
+newdata$Carex_pred <- predict(glm_carex, newdata = newdata, type = "response")
+newdata$Salix_pred <- predict(glm_salix, newdata = newdata, type = "response")
+
+# --- 3. Mise en forme longue pour ggplot ---
+pred_df <- newdata %>%
+  pivot_longer(cols = c(Carex_pred, Salix_pred),
+               names_to = "Species",
+               values_to = "Probability") %>%
+  mutate(Species = case_when(
+    Species == "Carex_pred" ~ "Carex myosuroides",
+    Species == "Salix_pred" ~ "Salix herbacea",
+    TRUE ~ Species
+  ))
+
+# --- 4. Visualisation ---
+ggplot(pred_df, aes(x = ELEV, y = Probability, color = Species)) +
+  geom_line(size = 1.3) +
+  geom_point(
+    data = Presence.combined %>%
+      pivot_longer(cols = c(Carex_present, Salix_present),
+                   names_to = "Species",
+                   values_to = "Presence") %>%
+      mutate(Species = case_when(
+        Species == "Carex_present" ~ "Carex myosuroides",
+        Species == "Salix_present" ~ "Salix herbacea",
+        TRUE ~ Species
+      )),
+    aes(x = ELEV, y = Presence),
+    alpha = 0.2, size = 1
+  ) +
+  theme_minimal(base_size = 13) +
+  labs(
+    title = "Effet de l'altitude sur la probabilité de présence",
+    subtitle = "Modèle logistique binomial",
+    x = "Altitude (m)",
+    y = "Probabilité de présence",
+    color = "Espèce"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.position = "top"
+  )
+
+```
 
 
 
+--> arranger les datas pour les analyse de Aravo 
+
+
+
+
+ # vérification 
+
+
+```{r}
+library(ggplot2)
+
+ggplot(Presence.combined, aes(x = x_l93, y = y_l93)) +
+  geom_point(aes(color = factor(both_species), size = ELEV), alpha = 0.8) +
+  scale_color_manual(values = c("0" = "grey70", "1" = "purple"),
+                     name = "Co-occurrence Carex/Salix",
+                     labels = c("Non", "Oui")) +
+  theme_minimal(base_size = 13) +
+  labs(title = "Répartition spatiale des relevés (Carex & Salix)",
+       x = "Coordonnée X (L93)", y = "Coordonnée Y (L93)", size = "Altitude (m)")
+
+```
+
+
+```{r}
+newdata <- data.frame(ELEV = seq(min(Presence.combined$ELEV, na.rm = TRUE),
+                                 max(Presence.combined$ELEV, na.rm = TRUE), length.out = 200))
+
+newdata$pred <- predict(glm_alt, newdata = newdata, type = "response")
+
+ggplot(newdata, aes(x = ELEV, y = pred)) +
+  geom_line(color = "purple", size = 1.2) +
+  theme_minimal(base_size = 13) +
+  labs(title = "Effet de l'altitude sur la probabilité de cooccurrence",
+       x = "Altitude (m)", y = "Probabilité prédite")
+
+
+
+```
+
+```{r}
+
+```
+
+# le code ci dessous est censé donner la même chose que celui ci dessus bizzare  vérifier 
+
+```{r}
+library(ggplot2)
+
+ggplot(Presence.combined, aes(x = ELEV, y = both_species)) +
+  geom_jitter(height = 0.05, width = 0, alpha = 0.2, color = "grey40") +
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), 
+              se = TRUE, color = "purple", size = 1.2) +
+  theme_minimal() +
+  labs(
+    title = "Effet de l’altitude sur la probabilité de co-occurrence Carex / Salix",
+    x = "Altitude (m)",
+    y = "Probabilité de co-occurrence"
+  )
+```
+
+`
+```{r}
+library(ggplot2)
+
+Presence.combined <- Presence.combined %>%
+  mutate(
+    both_species = as.numeric(as.character(both_species)),
+    YR.REL = as.numeric(as.character(YR.REL))
+  )
+
+Presence.combined %>%
+  group_by(YR.REL) %>%
+  summarise(
+    n_total = n(),
+    n_cooc = sum(both_species, na.rm = TRUE),
+    prop_cooc = n_cooc / n_total
+  ) %>%
+  ggplot(aes(x = YR.REL, y = prop_cooc)) +
+  geom_line(color = "purple", linewidth = 1.2) +
+  geom_point(color = "purple", size = 2) +
+  theme_minimal(base_size = 13) +
+  labs(title = "Évolution de la cooccurrence Carex / Salix dans le temps",
+       x = "Année", y = "Proportion de cooccurrence")
+```
+
+```{r}
+Presence.combined
+```
+
+
+
+```{r}
+library(ggpubr)
+library(dplyr)
+
+# Vérification de la variable
+table(Presence.combined$both_species)
+
+# Boxplot + test de Wilcoxon
+ggboxplot(Presence.combined,
+          x = "both_species",
+          y = "ELEV",
+          fill = "both_species",
+          palette = c("grey", "purple"),
+          xlab = "Co-occurrence (0 = non, 1 = oui)",
+          ylab = "Altitude (m)",
+          title = "Altitude selon la co-occurrence Carex / Salix") +
+  stat_compare_means(
+    aes(group = both_species),
+    method = "wilcox.test",
+    label = "p.format",
+    label.y = max(Presence.combined$ELEV, na.rm = TRUE) * 0.95
+  ) +
+  theme_minimal(base_size = 13)
+
+```
+
+
+# comparaison complémentaire 
+
+changement de zone d'échantillonage 
+
+
+```{r}
+cor.test(Presence.combined$ELEV, Presence.combined$YR.REL, use="complete.obs")
+```
+
+
+```{r}
+ggplot(Presence.combined, aes(x=YR.REL, y=ELEV)) + geom_boxplot() + theme_minimal()
+```
+
+# Robustesse bootstrap
+
+
+```{r}
+install.packages("car")
+
+
+library(boot)
+
+# example bootstrap for a single year (wrap in lapply for all years)
+boot_prop <- function(data, i) {
+  d <- data[i,]
+  mean(d$both_species)
+}
+res_boot <- boot(data = Presence.combined %>% filter(YR.REL==2000), statistic = boot_prop, R=1000)
+boot.ci(res_boot, type="perc")
+
+```
+```{r}
+Presence.combined <- Presence.combined %>%
+  mutate(type = case_when(
+    Carex_present==1 & Salix_present==1 ~ "Both",
+    Carex_present==1 & Salix_present==0 ~ "Carex_only",
+    Carex_present==0 & Salix_present==1 ~ "Salix_only",
+    TRUE ~ "None"
+  ))
+
+ggplot(Presence.combined, aes(x=x_l93, y=y_l93, color=type)) +
+  geom_point(alpha=0.8, size=2) +
+  theme_minimal() + coord_equal() +
+  labs(title="Répartition spatiale : Carex / Salix / Both")
+```
+
+
+```{r}
+library(ggplot2)
+ggplot(Presence.combined %>% filter(type=="Both"), aes(x=x_l93, y=y_l93)) +
+  stat_density_2d(aes(fill = ..level..), geom="polygon", alpha=0.6) +
+  geom_point(color="red", size=1) +
+  theme_minimal() +
+  labs(title="Densité des relevés communs (Both)")
+```
+
+--> chercher comment interpréter 
+
+```{r}
+Presence.combined <- Presence.combined %>% mutate(period = cut(YR.REL, breaks=seq(1989, 2025, by=5)))
+ggplot(Presence.combined %>% filter(!is.na(period)), aes(x=x_l93, y=y_l93, color=type)) +
+  geom_point(size=1) +
+  facet_wrap(~period) + coord_equal() + theme_minimal()
+```
+
+
+```{r}
+
+cooccur_tests <- Presence.combined %>%
+  group_by(YR.REL) %>%
+  summarise(
+    a = sum(Carex_present==1 & Salix_present==1), # both
+    b = sum(Carex_present==1 & Salix_present==0),
+    c = sum(Carex_present==0 & Salix_present==1),
+    d = sum(Carex_present==0 & Salix_present==0)
+  ) %>%
+  rowwise() %>%
+  mutate(
+    fisher_p = fisher.test(matrix(c(a,b,c,d),2,2))$p.value,
+    or = ifelse((b*c)==0, NA, (a*d)/(b*c))
+  )
+
+# show years with significant cooccurrence (beware multiple testing)
+cooccur_tests %>% arrange(fisher_p) %>% head()
+```
+```{r}
+Presence.combined <- Presence.combined %>% mutate(decade = (YR.REL %/% 10) * 10)
+decade_tab <- Presence.combined %>%
+  group_by(decade) %>%
+  summarise(n_total = n(), n_both = sum(both_species==1)) %>%
+  mutate(prop = n_both / n_total)
+
+ggplot(decade_tab, aes(x=factor(decade), y=prop)) +
+  geom_col(fill="tomato") +
+  labs(title="Proportion de cooccurrence par décade", x="Décade", y="Prop. both")
+```
+```{r}
+releves_par_an <- Presence.combined %>%
+  count(YR.REL) %>% arrange(YR.REL)
+
+# histogramme
+ggplot(releves_par_an, aes(x = YR.REL, y = n)) +
+  geom_col(fill="steelblue") +
+  theme_minimal() +
+  labs(title="Nombre de relevés par année", x="Année", y="Nombre de relevés")
+```
+
+--> voir le code 2 dans to do chat gpt
+
+```{r}
+# -------------------------------
+# 1️⃣ Packages nécessaires
+# -------------------------------
+library(tidyverse)
+
+# -------------------------------
+# 2️⃣ Préparation des données
+# -------------------------------
+df <- Presence.combined %>%
+  mutate(
+    Carex = as.numeric(Carex_present),
+    Salix = as.numeric(Salix_present),
+    ELEV = as.numeric(ELEV)
+  )
+
+# Vérifie rapidement que tout est bien en place :
+glimpse(df)
+
+# -------------------------------
+# 3️⃣ Calcul de l’altitude moyenne / médiane de présence
+# -------------------------------
+alt_optimum <- df %>%
+  pivot_longer(cols = c(Carex, Salix), names_to = "Espece", values_to = "Presence") %>%
+  filter(Presence == 1) %>%
+  group_by(Espece) %>%
+  summarise(
+    Altitude_moyenne = mean(ELEV, na.rm = TRUE),
+    Altitude_mediane = median(ELEV, na.rm = TRUE),
+    Altitude_min = min(ELEV, na.rm = TRUE),
+    Altitude_max = max(ELEV, na.rm = TRUE),
+    n_releves = n()
+  )
+
+print(alt_optimum)
+
+
+
+# -------------------------------
+# 4️⃣ Visualisation — histogrammes
+# -------------------------------
+ggplot(
+  df %>%
+    pivot_longer(cols = c(Carex, Salix), names_to = "Espece", values_to = "Presence"),
+  aes(x = ELEV, fill = as.factor(Presence))
+) +
+  geom_histogram(binwidth = 50, position = "stack", color = "white") +
+  facet_wrap(~Espece, ncol = 1) +
+  scale_fill_manual(
+    values = c("0" = "grey80", "1" = "#0072B2"),
+    labels = c("Absence", "Présence"),
+    name = ""
+  ) +
+  theme_minimal(base_size = 13) +
+  labs(
+    title = "Distribution altitudinale de Carex myosuroides et Salix herbacea",
+    subtitle = "Présence en fonction de l'altitude (ELEV) — estimation des optimums écologiques",
+    x = "Altitude (m)",
+    y = "Nombre de relevés"
+  )
+
+# -------------------------------
+# 5️⃣ Visualisation alternative — densité
+# -------------------------------
+ggplot(
+  df %>%
+    pivot_longer(cols = c(Carex, Salix), names_to = "Espece", values_to = "Presence") %>%
+    filter(Presence == 1),
+  aes(x = ELEV, fill = Espece, color = Espece)
+) +
+  geom_density(alpha = 0.4) +
+  scale_fill_manual(values = c("Carex" = "#E69F00", "Salix" = "#0072B2")) +
+  scale_color_manual(values = c("Carex" = "#E69F00", "Salix" = "#0072B2")) +
+  theme_minimal(base_size = 13) +
+  labs(
+    title = "Optimum écologique altitudinal",
+    subtitle = "Distribution des présences selon l’altitude (ELEV)",
+    x = "Altitude (m)",
+    y = "Densité de présence"
+  )
+
+```
+
+
+```{r}
+Presence.combined
+```
+
+# TEST ARAVO SALIX ET CAREX 
+
+```{r}
+# --- Chargement des librairies ---
+library(readxl)
+library(dplyr)
+library(writexl)
+
+# --- 1. Importation du fichier Excel ---
+# Remplace le chemin ci-dessous par celui de ton fichier
+setwd("~/Desktop/SEAM_Aravo/Rstudio")
+fichier <- "REL_ARAVO.xlsx"
+
+meta <- read_excel(fichier, sheet = "META")
+rel2001 <- read_excel(fichier, sheet = "2001")
+rel2022 <- read_excel(fichier, sheet = "2022")
+
+
+# --- 2. Conversion des coordonnées (si virgules au lieu de points) ---
+meta <- meta %>%
+  mutate(
+    X_L93 = as.numeric(gsub(",", ".", X_L93)),
+    Y_L93 = as.numeric(gsub(",", ".", Y_L93))
+  )
+
+
+# --- 2. Vérification rapide des structures ---
+# (optionnel mais utile pour s'assurer que tout est bien lu)
+str(meta)
+str(rel2001)
+str(rel2022)
+
+# --- 3. Identifier les placettes communes ---
+id_communs <- intersect(rel2001$ID, rel2022$ID)
+cat(length(id_communs), "placettes communes identifiées.\n")
+
+# --- 4. Créer REL_APA (placettes appariées) ---
+REL_APA_2001 <- rel2001 %>%
+  filter(ID %in% id_communs) %>%
+  left_join(meta, by = "ID")
+
+REL_APA_2022 <- rel2022 %>%
+  filter(ID %in% id_communs) %>%
+  left_join(meta, by = "ID")
+
+# Si tu veux un seul jeu combiné pour les données appariées :
+REL_APA <- bind_rows(REL_APA_2001, REL_APA_2022)
+
+# --- 5. Créer REL_COM (toutes les placettes) ---
+# On garde toutes les placettes, même celles présentes à une seule date
+REL_COM <- meta %>%
+  full_join(rel2001, by = "ID") %>%
+  full_join(rel2022, by = "ID", suffix = c("_2001", "_2022"))
+
+# --- 6. Vérification du résultat ---
+cat("REL_COM contient", nrow(REL_COM), "placettes au total.\n")
+
+# --- 7. Export (optionnel) ---
+write_xlsx(list(
+  REL_APA_2001 = REL_APA_2001,
+  REL_APA_2022 = REL_APA_2022,
+  REL_APA = REL_APA,
+  REL_COM = REL_COM
+), "resultats_rel.xlsx")
+
+cat("Fichier 'resultats_rel.xlsx' créé avec succès ✅\n")
+
+```
+
+
+
+```{r}
+REL_APA_2001
+```
+
+
+```{r}
+REL_APA_2022
+```
+
+```{r}
+REL_APA
+```
+
+```{r}
+REL_COM
+```
+
+
+# A. Co-occurrence intra-annuelle (au sein d’une même année)
+
+Tableau de contingence 2×2 pour chaque année → test exact de Fisher pour co-occurrence.
+
+```{r}
+
+library(dplyr)
+library(cooccur)
+
+# Vérifier les noms de colonnes
+names(REL_APA_2001)
+
+# Assurer que SALIX et CAREX sont numériques (0 = absence, 1 = présence)
+REL_APA_2001 <- REL_APA_2001 %>%
+  mutate(
+    SALIX = as.numeric(SALIX),
+    CAREX = as.numeric(CAREX)
+  )
+
+# Vérifier la structure
+str(REL_APA_2001)
+head(REL_APA_2001)
+
+
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+
+# --- 2. Vérifier les colonnes 0/1 ---
+REL_APA_2001 <- REL_APA_2001 %>%
+  mutate(
+    SALIX = ifelse(SALIX > 0, 1, 0),
+    CAREX = ifelse(CAREX > 0, 1, 0)
+  )
+
+REL_APA_2022 <- REL_APA_2022 %>%
+  mutate(
+    SALIX = ifelse(SALIX > 0, 1, 0),
+    CAREX = ifelse(CAREX > 0, 1, 0)
+  )
+
+```
+
+
+
+```{r}
+# --- 3. Test de co-occurrence intra-annuelle (Fisher) ---
+tab_2001 <- table(REL_APA_2001$SALIX, REL_APA_2001$CAREX)
+tab_2022 <- table(REL_APA_2022$SALIX, REL_APA_2022$CAREX)
+
+fisher_2001 <- fisher.test(tab_2001)
+fisher_2022 <- fisher.test(tab_2022)
+
+print("Co-occurrence 2001 :")
+print(tab_2001)
+print(fisher_2001)
+
+print("Co-occurrence 2022 :")
+print(tab_2022)
+print(fisher_2022)
+
+```
+
+
+```{r}
+# --- 4. Test temporel (McNemar) sur placettes appariées ---
+cooccur_2001 <- REL_APA_2001$SALIX & REL_APA_2001$CAREX
+cooccur_2022 <- REL_APA_2022$SALIX & REL_APA_2022$CAREX
+
+table_time <- table(cooccur_2001, cooccur_2022)
+mcnemar <- mcnemar.test(table_time)
+
+print("Comparaison temporelle (McNemar) :")
+print(table_time)
+print(mcnemar)
+
+```
+
+```{r}
+# --- 5. Carte de co-occurrence 2001 ---
+ggplot(REL_APA_2001) +
+  geom_point(aes(x = X_L93, y = Y_L93, color = interaction(SALIX, CAREX))) +
+  scale_color_manual(values = c("grey70","blue","green","purple"),
+                     labels = c("aucune","SALIX seul","CAREX seul","les deux")) +
+  coord_equal() +
+  labs(title = "Co-occurrence SALIX & CAREX (2001)")
+
+# --- 6. Carte de co-occurrence 2022 ---
+ggplot(REL_APA_2022) +
+  geom_point(aes(x = X_L93, y = Y_L93, color = interaction(SALIX, CAREX))) +
+  scale_color_manual(values = c("grey70","blue","green","purple"),
+                     labels = c("aucune","SALIX seul","CAREX seul","les deux")) +
+  coord_equal() +
+  labs(title = "Co-occurrence SALIX & CAREX (2022)")
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Ajouter une colonne "cooccur" pour les 4 combinaisons
+REL_APA_2001_plot <- REL_APA_2001 %>%
+  mutate(cooccur = factor(interaction(SALIX, CAREX),
+                          levels = c("0.0","1.0","0.1","1.1"),
+                          labels = c("aucune","SALIX seul","CAREX seul","les deux")))
+
+REL_APA_2022_plot <- REL_APA_2022 %>%
+  mutate(cooccur = factor(interaction(SALIX, CAREX),
+                          levels = c("0.0","1.0","0.1","1.1"),
+                          labels = c("aucune","SALIX seul","CAREX seul","les deux")))
+
+# Combiner les deux années
+REL_APA_all <- bind_rows(
+  REL_APA_2001_plot %>% mutate(YR = 2001),
+  REL_APA_2022_plot %>% mutate(YR = 2022)
+)
+
+# Carte combinée
+ggplot(REL_APA_all) +
+  geom_point(aes(x = X_L93, y = Y_L93, color = cooccur)) +
+  scale_color_manual(values = c("grey70","blue","green","purple")) +
+  facet_wrap(~YR) +
+  coord_equal() +
+  labs(title = "Co-occurrence SALIX & CAREX (2001 vs 2022)",
+       color = "Présence") +
+  theme_minimal()
+
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 1. Co-occurrence par année
+REL_APA_2001_plot <- REL_APA_2001 %>%
+  mutate(cooccur = ifelse(SALIX == 1 & CAREX == 1, 1, 0)) %>%
+  dplyr::select(ID, cooccur, X_L93, Y_L93)
+
+REL_APA_2022_plot <- REL_APA_2022 %>%
+  mutate(cooccur = ifelse(SALIX == 1 & CAREX == 1, 1, 0)) %>%
+  dplyr::select(ID, cooccur)
+
+# 2. Combiner les deux années
+REL_APA_change <- REL_APA_2001_plot %>%
+  left_join(REL_APA_2022_plot, by = "ID", suffix = c("_2001","_2022"))
+
+# 3. Créer la variable changement
+REL_APA_change <- REL_APA_change %>%
+  mutate(changement = case_when(
+    cooccur_2001 == 0 & cooccur_2022 == 1 ~ "apparue",
+    cooccur_2001 == 1 & cooccur_2022 == 0 ~ "disparue",
+    cooccur_2001 == 1 & cooccur_2022 == 1 ~ "toujours présente",
+    cooccur_2001 == 0 & cooccur_2022 == 0 ~ "toujours absente"
+  ))
+
+# 4. Vérification rapide
+table(REL_APA_change$changement)
+
+# 5. Carte des changements
+ggplot(REL_APA_change) +
+  geom_point(aes(x = X_L93, y = Y_L93, color = changement), size = 3) +
+  scale_color_manual(values = c("apparue" = "purple",
+                                "disparue" = "red",
+                                "toujours présente" = "blue",
+                                "toujours absente" = "grey70")) +
+  coord_equal() +
+  labs(title = "Évolution de la co-occurrence SALIX & CAREX (2001 → 2022)",
+       color = "Changement") +
+  theme_minimal()
+
+
+```
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# --- 1. Créer une colonne co-occurrence pour chaque année ---
+REL_APA_2001_plot <- REL_APA_2001 %>%
+  mutate(cooccur = ifelse(SALIX == 1 & CAREX == 1, 1, 0))
+
+REL_APA_2022_plot <- REL_APA_2022 %>%
+  mutate(cooccur = ifelse(SALIX == 1 & CAREX == 1, 1, 0))
+
+# --- 2. Calculer le pourcentage de placettes avec co-occurrence ---
+stats_hist <- bind_rows(
+  REL_APA_2001_plot %>% summarise(YR = 2001, pct = 100 * mean(cooccur)),
+  REL_APA_2022_plot %>% summarise(YR = 2022, pct = 100 * mean(cooccur))
+)
+
+# --- 3. Créer l'histogramme ---
+ggplot(stats_hist, aes(x = factor(YR), y = pct, fill = factor(YR))) +
+  geom_bar(stat = "identity", width = 0.5) +
+  geom_text(aes(label = paste0(round(pct,1),"%")), vjust = -0.5) +
+  scale_fill_manual(values = c("2001" = "skyblue", "2022" = "orange")) +
+  labs(title = "Pourcentage de placettes avec co-occurrence SALIX & CAREX",
+       x = "Année",
+       y = "% de placettes",
+       fill = "Année") +
+  ylim(0,100) +
+  theme_minimal()
+
+```
+
+# Maintenant je vais travailler avec l'ensemble des données pour une vision globale 
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# -------------------------------
+# 1️⃣ Carte globale REL_COM
+# -------------------------------
+
+# Colonnes présence au moins une année
+REL_COM_plot <- REL_COM %>%
+  mutate(
+    SALIX = pmax(SALIX_2001, SALIX_2022, na.rm = TRUE),
+    CAREX = pmax(CAREX_2001, CAREX_2022, na.rm = TRUE),
+    cooccur = case_when(
+      SALIX == 1 & CAREX == 1 ~ "les deux",
+      SALIX == 1 & CAREX == 0 ~ "SALIX seul",
+      SALIX == 0 & CAREX == 1 ~ "CAREX seul",
+      TRUE ~ "aucune"
+    )
+  ) %>%
+  filter(!is.na(X_L93) & !is.na(Y_L93)) # Filtrer les NA
+
+# Annotations centrées par catégorie
+stats_COM_coords <- REL_COM_plot %>%
+  group_by(cooccur) %>%
+  reframe(
+    n = n(),
+    pct = round(100*n/nrow(REL_COM_plot),1),
+    X_label = mean(X_L93),
+    Y_label = mean(Y_L93)
+  )
+
+# Carte
+ggplot(REL_COM_plot) +
+  geom_point(aes(x=X_L93, y=Y_L93, color=cooccur), size=3, alpha=0.7) +
+  scale_color_manual(values=c("les deux"="purple","SALIX seul"="blue",
+                              "CAREX seul"="green","aucune"="grey70")) +
+  coord_equal() +
+  labs(title="Répartition spatiale des placettes (toutes années)",
+       color="Catégorie") +
+  theme_minimal()
+
+```
+
+
+# Avec jeu de donnée : REL_APA
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# -------------------------------
+# 1️⃣ Préparer les données REL_APA
+# -------------------------------
+
+REL_APA_all_plot <- bind_rows(
+  REL_APA_2001 %>% mutate(YR=2001),
+  REL_APA_2022 %>% mutate(YR=2022)
+) %>%
+  mutate(
+    cooccur = case_when(
+      SALIX == 1 & CAREX == 1 ~ "les deux",
+      SALIX == 1 & CAREX == 0 ~ "SALIX seul",
+      SALIX == 0 & CAREX == 1 ~ "CAREX seul",
+      TRUE ~ "aucune"
+    )
+  )
+
+# -------------------------------
+# 2️⃣ Calculer statistiques pour barplot
+# -------------------------------
+
+stats_APA <- REL_APA_all_plot %>%
+  group_by(YR, cooccur) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(YR) %>%
+  mutate(pct = 100 * n / sum(n))
+
+# -------------------------------
+# 3️⃣ Stacked barplot
+# -------------------------------
+
+ggplot(stats_APA, aes(x = factor(YR), y = pct, fill = cooccur)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(round(pct,1),"%")), 
+            position = position_stack(vjust = 0.5), color = "white", size = 4) +
+  scale_fill_manual(values = c("les deux"="purple",
+                               "SALIX seul"="blue",
+                               "CAREX seul"="green",
+                               "aucune"="grey70")) +
+  labs(title = "Distribution des catégories de co-occurrence (placettes communes)",
+       x = "Année",
+       y = "% de placettes",
+       fill = "Catégorie") +
+  theme_minimal()
+
+```
+
+```{r}
+# Enregistrer REL_APA en CSV dans le même dossier que le script
+write.csv(REL_APA, "REL_APA.csv", row.names = FALSE)
+```
 
 
